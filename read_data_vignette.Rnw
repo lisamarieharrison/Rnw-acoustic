@@ -1,0 +1,99 @@
+\documentclass{article}
+
+\begin{document}
+\title{Schools detection using the \texttt{R} package \texttt{acoustic} to control Echoview via COM}
+\author{Lisa-Marie Harrison and Martin Cox}
+\SweaveOpts{concordance=TRUE}
+\maketitle
+
+This vignette provides an example of preparing and importing multiple transects of acoustic data into Echoview using the \texttt{R} package \texttt{acoustic}. It is necessary to run this file before running the Schools Detection or Biomass Estimation examples. It is assumed that the user is already familiar with Echoview.
+
+To run this example, you will need the following files:
+\begin{enumerate}
+  \item \textbf{Echosounder data:} Simrad EK60 RAW data collected during the KAOS voyage.
+  \item \textbf{An Echoview template file:} An Echoview (.EV) file containing the virtual variables used during data processing and must be copied to the Echoview templates folder.
+  \item \textbf{Echoview calibration file:} The Echoview .ECS file containing the EK60 calibration parameters.
+  \item \textbf{Start and end file regions:} Start and end times of each transect stored as an Echoview region file.
+\end{enumerate}
+All these files are available from ... and should be downloaded to the data directory specified in the \texttt{dd} object.  \texttt{If you want to reproduce this vignette, you should assign the location of the KAOS example data to \texttt{dd}.}
+
+First, set the working directory:
+<<wd>>=
+dd='C:/Users/Lisa/Desktop/KAOS'
+@
+\section{Loading RAW data into Echoview}
+In this section we load the necessary packages into the \texttt{R} workspace, open a COM connection between \texttt{R} and Echoview, then populate the Echoview template file with RAW Simrad EK60 data files.
+<<loadlib>>=
+library(acoustic)
+@
+The EV file \texttt{KAOStemplate.EV} \textbf{must be copied into the c:/Program Files (x86)/Myriax/Echoview/Echoview6/Templates/directory.}
+Open a COM connection between \texttt{R} and \texttt{Echoview}:
+<<openCOM>>=
+EVAppObj <- COMCreate('EchoviewCom.EvApplication')
+@
+Now we get a vector of the RAW data files to add to the Echoview template:
+<<fileList>>=
+pathAndFn=list.files(paste(dd,'raw',sep='/'),full.names=TRUE)
+@
+We remove any '.evi' files from the \texttt{pathAndFn}:
+<<removeEvi>>=
+eviLoc=grep('.evi',pathAndFn)
+if(length(eviLoc)>0) pathAndFn=pathAndFn[-eviLoc]
+@
+\textbf{Important: Any filenames that are passed via COM  must contain the full directory path.}
+\section{Populate an Echoview template}
+Now that we have a vector of RAW data file locations, we can populate the Echoview template file specified in \texttt{EVCreateNew(templateFn)}. 
+<<EVcreate>>=
+EVFile <- EVCreateNew(EVAppObj=EVAppObj,
+  templateFn=paste(dd, "/KAOStemplate.EV", sep = ""),
+  EVFileName=paste(dd,'kaosAll.ev',sep='/'),
+  filesetName="038-120-200",
+  dataFiles=pathAndFn, 
+  CloseOnSave = FALSE)$EVFile
+
+  #add a calibration file
+  EVAddCalibrationFile(EVFile = EVFile, filesetName = "038-120-200", calibrationFile = paste(dd, "/20120326_KAOS_SimradEK5.ecs", sep = ""))
+
+  EVCloseFile(EVFile = EVFile)
+@
+We can also populate a template in a loop, so if there are multiple transects, each containing a large amount of RAW data, we can create an EV file for each transect.  To help illustrate this, there is a .csv file, \texttt{vignette\_file\_list\_subset.csv}, included in the example data that specifies which transect the RAW data files are assigned to.  First of all, we load this file into the \texttt{R} workspace:
+<<loadTransectDesignator>>=
+tF <- read.csv(paste(dd,'vignette_file_list_subset.csv',sep='/'))
+head(tF)
+@
+Next, we append the raw data directory path to the raw data filenames:
+<<appendRawpath>>=
+tF$filename <- paste(dd,'raw',tF$filename,sep='/')
+@
+Now we will loop over the transect file and create one EV file per transect. A calibration file is added to each .EV file. Regions definitions files for off transect times are also imported, which will remove off effort time from the analysis.
+<<oneEVperTransect>>=
+uniqueTransect=unique(tF$transectNumber)
+for(i in 1:length(uniqueTransect)) {
+ 
+  EVFile <- EVCreateNew(EVAppObj=EVAppObj,
+  templateFn=paste(dd, "KAOStemplate.EV", sep = "/"),
+  EVFileName=paste(dd,'/kaos-transect-',i,'.ev',sep=''),
+  filesetName="038-120-200",
+  dataFiles=as.character(tF$filename[tF$transectNumber==uniqueTransect[i]]), 
+  CloseOnSave = FALSE)$EVFile
+  
+    #add a calibration file
+  EVAddCalibrationFile(EVFile = EVFile, filesetName = "038-120-200", calibrationFile = paste(dd, "/20120326_KAOS_SimradEK5.ecs", sep = ""))
+
+    #get a list of the regions definitions files to import and import individually
+  off_transect_files <- list.files(paste(dd, "/off transect regions", sep = ''), 
+                               full.names = T)
+  for (j in 1:length(off_transect_files)) {
+    EVImportRegionDef(EVFile, off_transect_files[j], paste("region_", j, sep = ""))
+  }  
+  
+  #close the current transect
+  EVCloseFile(EVFile = EVFile)
+  
+  }
+
+@
+
+This method allows subsets of a full survey to be processed separately which is useful for large data sets. Rather than running transects separately as shown above, the same method could also be used to run each survey day separately. The Biomass Estimation and Schools Detection vignettes follow on from this point and require this example to have been run first.
+
+\end{document}

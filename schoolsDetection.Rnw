@@ -1,0 +1,96 @@
+\documentclass{article}
+ \usepackage{url}
+ \usepackage{natbib}
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+
+\title{Schools detection using the \texttt{R} package \texttt{acoustic} to control Echoview via COM}
+\author{Martin J. Cox}
+\maketitle
+\section{Introduction}
+In this vignette we will use the example acoustic data collected during the KOAS voyage to demonstrate how to carry out schools detection using \texttt{acoustic} to control Echoview via COM.  We assume the reader has knowledge of the schools detection algorithm implemented in Echoview.  If not please visit  \url{http://support.echoview.com/WebHelp/Echoview.htm/} to see the Echoview help file and also ...  We also assume the reader is familar with Echoview concepts such as filesets, regions, files and virtual variables.
+
+To run this example, you will need the following files:
+\begin{enumerate}
+  \item \textbf{Echosounder data:} Simrad EK60 RAW data collected during the KAOS voyage.
+  \item \textbf{An Echoview template file:} An Echoview (.EV) file containing the virtual variables used during data processing and must be copied to the Echoview templates folder.
+  \item \textbf{Echoview calibration file:} The Echoview .ECS file containing the EK60 calibration parameters.
+  \item \textbf{Start and end file regions:} Start and end times of each transect stored as an Echoview region file.
+\end{enumerate}
+All these files are available from ... and should be downloaded to the data directory specified in the \texttt{dd} object.  \texttt{If you want to reproduce this vignette, you should assign the location of the KAOS example data to \texttt{dd}.}. This vignette requires you to have run the Read Data example first.
+
+First, set the working directory. Echoview requires the full file path to be specified for every file name passed using COM.
+<<wd>>=
+dd='c:/Users/Lisa/Desktop/KAOS'
+@
+\section{Loading RAW data into Echoview}
+In this section we load the necessary packages into the \texttt{R} workspace, open a COM connection between \texttt{R} and Echoview, then populate the Echoview template file with RAW Simrad EK60 data files.
+<<loadlib>>=
+library(acoustic)
+@
+Open a COM connection between \texttt{R} and \texttt{Echoview}:
+<<openCOM>>=
+EVAppObj <- COMCreate('EchoviewCom.EvApplication')
+@
+Get a list of the raw files required for each transect:
+<<loadTransectDesignator>>=
+tF=read.csv(paste(dd,'vignette_file_list_subset.csv', sep = '/'))
+head(tF)
+tF$filename <- paste(dd,'raw',tF$filename,sep='/')
+uniqueTransect=unique(tF$transectNumber)
+@
+
+\section{Add seabed line}
+Automatic seabed detection performed poorly so the seabed line was manually edited and here we overwrite an existing editable line and replace it with lines saved in the lines directory of the example data.
+
+
+\section{Schools detection}
+We are now ready to start schools detection. First, we get the ful path and name of all the EV files:
+<<EVFileV>>=
+fnEVVec=list.files(dd,full.name=TRUE,pattern=paste("(", "transect", ").*\\.ev$", sep = ""))
+@
+
+Schools detection is run on the 120 kHz 7x7 convolution variable separately for each transect. Using a loop, a single transect is opened, processed and closed before moving on to the next transect. For each transect, the regions definitions and Sv values for each aggregation detected are exported.
+<<schoolsDetection>>=
+  for(i in 1:length(fnEVVec)){
+    EVLog=NULL
+    message("Processing ",fnEVVec[i])
+    opens=EVOpenFile(EVAppObj,fileName=fnEVVec[i])
+    EVFile=opens$EVFile
+    EVLog=c(EVLog,opens$msg)
+    
+    schDet<-EVSchoolsDetect(EVFile=EVFile,
+                            acoVarName='120 7x7 convolution',
+                            outputRegionClassName='aggregations',
+                            deleteExistingRegions=TRUE,
+                            distanceMode="GPS distance",
+                            maximumHorizontalLink=15,#m
+                            maximumVerticalLink=5,#m
+                            minimumCandidateHeight=1,#m
+                            minimumCandidateLength=10,#m
+                            minimumSchoolHeight=2,#m
+                            minimumSchoolLength=15, #m
+                            dataThreshold=-70)
+    EVLog=c(EVLog,schDet$msg)
+    EVLog=c(EVLog,EVSaveFile(EVFile)$msg)
+    
+    #if aggregations were detected, export the data
+    if (schDet$nbrOfDetectedschools > 0) {
+    
+    #export region definitions all aggregations
+    regionClass <- EVRegionClassFinder(EVFile, "aggregations")$regionClass
+    EVExportRegionDefByClass(regionClass, paste(dd, "/exported aggregations/aggregation_region_def_transect_", i, ".evr", sep = ""))
+    
+    #export Sv data for all aggregations
+    EVIntegrationByRegionsExport(EVFile = EVFile, acoVarName = "120 seabed and surface excluded", regionClassName = "aggregations", exportFn = paste(dd, "/exported aggregations/aggregation_sv_transect_", i, ".csv", sep= ""))
+    
+    } 
+    
+    #close the file
+    EVCloseFile(EVFile = EVFile)
+  }
+@
+
+This example demonstrated how to automatically detect schools in \texttt{Echoview} and export the data separately for each transect of a survey. Classifying aggregations is outside the scope of this example.
+
+\end{document}
