@@ -60,6 +60,7 @@ Next, we append the raw data directory path to the raw data filenames:
 tF$filename <- paste(dd,'raw',tF$filename,sep='/')
 @
 Now we will loop over the transect file and create one EV file per transect. A calibration file is added to each .EV file. Regions definitions files for off transect times are also imported, which will remove off effort time from the analysis.
+
 <<oneEVperTransect>>=
 uniqueTransect=unique(tF$transectNumber)
 for(i in 1:length(uniqueTransect)) {
@@ -81,6 +82,10 @@ for(i in 1:length(uniqueTransect)) {
     EVImportRegionDef(EVFile, off_transect_files[j], paste("region_", j, sep = ""))
   }  
   
+  #add an EV line object and rename to 'seabed line'
+  evLine <- EVImportLine(EVFile, pathAndFn = 'C:/Users/Lisa/Desktop/KAOS/lineKAOS.evl')$lineObj
+  EVRenameLine(EVFile = EVFile, evLine = evLine, newName = "seabed line")
+  
   #save the open .EV file
   EVSaveFile(EVFile = EVFile)
   
@@ -91,6 +96,6 @@ for(i in 1:length(uniqueTransect)) {
 
 @
 
-This method allows subsets of a full survey to be processed separately which is useful for large data sets. Rather than running transects separately as shown above, the same method could also be used to run each survey day separately. The Biomass Estimation and Schools Detection vignettes follow on from this point and require this example to have been run first.
+This method allows subsets of a full survey to be processed automatically which is useful for large data sets. Rather than running transects separately as shown above, the same method could also be used to run each survey day separately. The Biomass Estimation and Schools Detection vignettes follow on from this point and require this example to have been run first.
 
 \end{document}
