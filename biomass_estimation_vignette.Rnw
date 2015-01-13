@@ -130,27 +130,39 @@ for (i in 1:length(uniqueTransect)) {
   #convert to density using target strength (units = kg/m2 per interval)
   #formula is multiplied by 250m because this is the depth of slice through the water column
   p <- 250*10 ^((mvbs - -42.22)/10)*1000
+  p <- p[p < 700] #remove noise values
+  
+  #calculate transect density
+  p_transect <- mean(na.omit(p))
   
   #write the density per vertical slice to a single .csv file
-  write.table(p, file = "C:/Users/Lisa/Desktop/KAOS/combined_density_intervals.csv", row.names = F, col.names = F, sep = ",", append = TRUE)
+  write.table(p_transect, file = "C:/Users/Lisa/Desktop/KAOS/combined_density_intervals.csv", row.names = F, col.names = F, sep = ",", append = TRUE)
   
   message(paste(Sys.time(), "Finished calculating krill density for transect ", i))
 }
 @
 
-Now that the densities for all 6 example transects are in the same .csv file, the biomass for the survey area can be calculated. The following coordinates were used as bounding locations for the survey and the \texttt{geosphere} package in \texttt{R} was used to calculate the survey area. Since this example is primarily to demonstrate the automation of Echoview, we will simply calculate biomass using mean survey density * survey area.
+Now that the mean densities for all 6 example transects are in the same .csv file, the biomass for the survey area can be calculated. The survey coordinates and the \texttt{geosphere} package in \texttt{R} were used to calculate the survey area. Survey density is calculated using the Jolly and Hampton (1990) method, where transect densities are weighted by transect length to give the final survey density. This is then multiplied by survey area to give the overall biomass estimate.
 
 <<calculateBiomass>>=
 #Calculate average survey density
-biomass.data <- read.csv("C:/Users/Lisa/Desktop/KAOS/combined_density_intervals.csv", header = F)
+transect.density <- read.csv("C:/Users/Lisa/Desktop/KAOS/combined_density_intervals.csv", header = F)
 
 #calculate survey area in km^2
 library(geosphere)
 coords <- read.csv(paste(dd, "/survey_coordinates.csv", sep =""), header = T)
 survey.area <- areaPolygon(coords)*10^-6
 
+#specify transect length in km
+transect.length <- c(13, 22, 15, 22, 18.5, 21.5)
+total.length <- sum(transect.length)
+length.weight <- transect.length/total.length
+
+#weight transect density by transect length to get survey density
+p.survey <- sum(transect.density*length.weight)
+
 #multiply by survey area to get survey biomass (units = tonnes)
-survey.biomass <- mean(na.omit(biomass.data$V1)) * survey.area /1000
+survey.biomass <- p.survey * survey.area * 10^6 / 1000000
 @
 
 The total estimated biomass for the \Sexpr{round(survey.area, 2)} square km sample area of the survey is \Sexpr{round(survey.biomass, 2)} tonnes. Note that this is only a simple example of how the package \texttt{acoustic} can be used to automatically estimate krill density. It is not intended as a reference for estimating biomass.

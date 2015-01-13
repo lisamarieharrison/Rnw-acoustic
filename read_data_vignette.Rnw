@@ -48,13 +48,7 @@ EVFile <- EVCreateNew(EVAppObj=EVAppObj,
   templateFn=paste(dd, "/KAOStemplate.EV", sep = ""),
   EVFileName=paste(dd,'kaosAll.ev',sep='/'),
   filesetName="038-120-200",
-  dataFiles=pathAndFn, 
-  CloseOnSave = FALSE)$EVFile
-
-  #add a calibration file
-  EVAddCalibrationFile(EVFile = EVFile, filesetName = "038-120-200", calibrationFile = paste(dd, "/20120326_KAOS_SimradEK5.ecs", sep = ""))
-
-  EVCloseFile(EVFile = EVFile)
+  dataFiles=pathAndFn)$EVFile
 @
 We can also populate a template in a loop, so if there are multiple transects, each containing a large amount of RAW data, we can create an EV file for each transect.  To help illustrate this, there is a .csv file, \texttt{vignette\_file\_list\_subset.csv}, included in the example data that specifies which transect the RAW data files are assigned to.  First of all, we load this file into the \texttt{R} workspace:
 <<loadTransectDesignator>>=
@@ -86,6 +80,9 @@ for(i in 1:length(uniqueTransect)) {
   for (j in 1:length(off_transect_files)) {
     EVImportRegionDef(EVFile, off_transect_files[j], paste("region_", j, sep = ""))
   }  
+  
+  #save the open .EV file
+  EVSaveFile(EVFile = EVFile)
   
   #close the current transect
   EVCloseFile(EVFile = EVFile)
