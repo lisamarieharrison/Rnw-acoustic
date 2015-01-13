@@ -1,0 +1,172 @@
+\documentclass{article}
+
+\begin{document}
+\title{Schools detection using the \texttt{R} package \texttt{acoustic} to control Echoview via COM}
+\author{Lisa-Marie Harrison}
+\SweaveOpts{concordance=TRUE}
+\maketitle
+
+\section{Introduction}
+This vignette provides an example of biomass calculation using the \texttt{R} package \texttt{R-acoustic} as an interface to Echoview (Myriax, Hobart). The data used are from the 2003 Aurora Australis survey Krill Acoustics and Oceanography Survey (KAOS). For this example, segments of 6 transects are used, each approximately 10km in length. Each transect is processed separately to show how this package can be used to process multiple transects or surveys automatically. It is assumed that the user is familiar with \texttt{Echoview} and concepts such as regions, variables, filesets and integration intervals.
+
+To run this example, you will need the following files:
+\begin{enumerate}
+  \item \textbf{Echosounder data:} Simrad EK60 RAW data collected during the KAOS voyage.
+  \item \textbf{An Echoview template file:} An Echoview (.EV) file containing the virtual variables used during data processing and must be copied to the Echoview templates folder.
+  \item \textbf{Echoview calibration file:} The Echoview .ECS file containing the EK60 calibration parameters.
+  \item \textbf{Start and end file regions:} Start and end times of each transect stored as an Echoview region file.
+\end{enumerate}
+All these files are available from ... and should be downloaded to the data directory specified in the \texttt{dd} object.  \texttt{If you want to reproduce this vignette, you should assign the location of the KAOS example data to \texttt{dd}.}. 
+
+This example assumes that the Read Data vignette has been run first, to prepare the data for processing. This example contains two components:
+
+\begin{enumerate}
+  \item \textbf{Processing and exporting in Echoview} For each transect, the data are processed in Echoview and are exported as integration intervals. 
+  \item \textbf{Biomass estimation in R} The exported data are used in R to calculate the density for each integration interval and estimate biomass.
+\end{enumerate}
+
+\section{Processing and exporting each transect in Echoview}
+Firstly, a connection to Echoview is established and the working directory is set.
+<<wd>>=
+dd='C:/Users/Lisa/Desktop/KAOS'
+library(acoustic)
+EVAppObj <- COMCreate('EchoviewCom.EvApplication')
+@
+
+A list of all raw files and the transect that they correspond to is imported:
+<<transectList>>=
+tF <- read.csv(paste(dd,'vignette_file_list_subset.csv',sep='/'))
+head(tF)
+tF$filename <- paste(dd,'raw',tF$filename,sep='/')
+uniqueTransect=unique(tF$transectNumber)
+
+@
+
+In the Read Data vignette, the calibration file, raw data and off effort region definitions were to each transect's .EV file so it is not necessary to add them again here.
+
+Next, the grid distance for the two acoustic variables of interest (38kHz and 120kHz) needs to be set. The grid size corresponds to the integration interval size when exporting the data. For this example a grid of 5m depth * 50 pings width is used. The 38kHz and 120kHz integration by cells are exported as .csv files. Each line in the exported .csv files represents a single integration interval. 
+
+Each transect is processed separately using a loop:
+<<processEV>>=
+
+for (i in 1:length(uniqueTransect)) {
+  
+  #open the correct .ev file for the tranect
+  #note: the correct raw data files were pre-loaded when the .ev file was created
+  EVFile <- EVOpenFile(EVAppObj, paste(dd,'/kaos-transect-',i,'.ev',sep=''))$EVFile
+  
+  #set the integration interval size using grid settings for 38kHz and 120kHz acoustic variables
+  #for 38kHz
+  varObj <- EVAcoVarNameFinder(EVFile, acoVarName = "38 seabed and surface excluded")$EVVar
+  EVChangeVariableGrid(EVFile = EVFile, acousticVar = varObj, verticalType = 4, horizontalType = 1, verticalDistance = 50, horizontalDistance = 5)
+  
+  #for 120kHz
+  varObj <- EVAcoVarNameFinder(EVFile, acoVarName = "120 seabed and surface excluded")$EVVar
+  EVChangeVariableGrid(EVFile = EVFile, acousticVar = varObj, verticalType = 4, horizontalType = 1, verticalDistance = 50, horizontalDistance = 5)
+  
+  #export the acoustic variables using integration by cells for the specified grid size
+  message(paste(Sys.time(), "Exporting data for transect ", i, "..."))
+  EVExportIntegrationByCells(EVFile = EVFile, variableName = '38 seabed and surface excluded', filePath = paste(dd, "/exported integrations/kaos_38_integration_transect_", i, ".csv", sep = ""))
+  EVExportIntegrationByCells(EVFile = EVFile, variableName = '120 seabed and surface excluded', filePath = paste(dd, "/exported integrations/kaos_120_integration_transect_", i, ".csv", sep = ""))
+  
+  message(paste(Sys.time(), "Finished exporting data for transect ", i))
+  
+  #close the .ev file
+  EVCloseFile(EVFile = EVFile)
+  
+}
+
+@
+
+
+\section{Processing the exported data in R}
+Now that the 38kHz and 120kHz integration intervals have been exported from Echoview, the calculation of survey density and biomass can be calculated in R. In this example, mean density is calculated for each vertical bin through the water column, rather than for each integration interval. 
+
+A dB difference window (120kHz - 38kHz) is used to determine which intervals contain krill. Non krill intervals are removed and krill density is calculated. The densities for each interval are then appended to the same .csv file for all transects.
+<<calculateDensity>>=
+
+#create an empty .csv file to export the density data to
+file.create("C:/Users/Lisa/Desktop/KAOS/combined_transect_density.csv")
+
+#for each transect, calculate krill density
+for (i in 1:length(uniqueTransect)) {
+
+  acoustic_38  <- read.csv(file = paste(dd, "/exported integrations/kaos_38_integration_transect_", i, ".csv", sep = ""), header = T)
+  acoustic_120 <- read.csv(file = paste(dd, "/exported integrations/kaos_120_integration_transect_", i, ".csv", sep = ""), header = T) 
+  
+  #sort by interval
+  acoustic_38 <- acoustic_38[order(acoustic_38$Interval), ]
+  acoustic_120 <- acoustic_120[order(acoustic_120$Interval), ]
+  acoustic_120 <- acoustic_120[c(1:nrow(acoustic_38)), ]
+  
+  #remove NULL layers (layer < 0)
+  acoustic_38 <- acoustic_38[acoustic_38$Layer > 0, ]
+  acoustic_120 <- acoustic_120[acoustic_120$Layer > 0, ]  
+  
+  #remove NuLL values (-900 or 900) from Sv values
+  sv_38 <- acoustic_38$Sv_mean
+  sv_120 <- acoustic_120$Sv_mean
+  sv_38[sv_38 > 500 | sv_38 < -500] <- NA
+  sv_120[sv_120 > 500 | sv_120 < -500] <- NA
+  
+  #calculate 120kHz - 38kHz for each 5m*50ping window
+  sv_diff <- sv_120 - sv_38
+  
+  #remove 120 - 38 kHz values outside of [1.02, 14.75] 
+  #dB difference window is from Potts AAD report for KAOS data
+  sv_diff[sv_diff < 1.02 | sv_diff > 14.75] <- NA
+  
+  #for windows that don't contain krill, remove 120kHz values
+  sv_120[is.na(sv_diff)] <- NA
+  
+  #convert Sv values (for integration intervals that contain krill) back from log scale
+  sv <- 10^(sv_120/10)
+  
+  #work out the mean volume backscattering strength (MVBS) for each vertical slice through the water column (width of each slice is 50 pings)
+  n.layers <- acoustic_120$Layer
+  mvbs  <- 10*log10(aggregate(matrix(sv, ncol = 1), by = list(rep(c(1:(length(sv)/max(n.layers))), each = max(n.layers))), sum, na.rm = T)$V1/max(n.layers))
+  mvbs[mvbs == -Inf] <- NA
+  
+  #convert to density using target strength (units = g/m2 per interval)
+  #formula is multiplied by 250m because this is the depth of slice through the water column
+  p <- 250*10 ^((mvbs - -42.22)/10)*1000
+  #remove p values > 1000. No integration intervals in the KAOS survey official report
+  #had a denisty of over 600gm2. Remove this section when noise regions are available.
+  p[p > 1000] <- NA
+  
+  #find the transect density as the mean of integration interval density
+  p_transect <- mean(na.omit(p))
+  
+  #write the density per vertical slice to a single .csv file
+  write.table(cbind(i, p_transect), file = "C:/Users/Lisa/Desktop/KAOS/combined_transect_density.csv", row.names = F, col.names = F, sep = ",", append = TRUE)
+  
+  message(paste(Sys.time(), "Finished calculating krill density for transect ", i))
+}
+@
+
+Now that the mean densities for all 6 example transects are in the same .csv file, the density and biomass for the full survey area can be calculated. The following coordinates were used as bounding locations for the survey and the \texttt{geosphere} package in \texttt{R} was used to calculate the survey area. The Jolly and Hampton (1990) method for estimating survey density is used which involves weighting the transect densities by transect length.
+
+<<calculateBiomass>>=
+#Calculate average survey density
+biomass.data <- read.csv("C:/Users/Lisa/Desktop/KAOS/combined_transect_density.csv", header = F)
+
+#calculate survey area in m^2
+library(geosphere)
+coords <- read.csv(paste(dd, "/survey_coordinates.csv", sep =""), header = T)
+survey.area <- areaPolygon(coords)
+
+#read in transect lengths in km
+transect.length <- read.csv("C:/Users/Lisa/Desktop/KAOS/transect_length.csv", header = F)
+
+length_weight <- transect.length/sum(transect.length)
+
+#multiply transect density by weighted transect length
+p_weighted <- sum(biomass.data[, 2] * length_weight)
+
+#multiply by survey area to get survey biomass (units = tonnes)
+survey.biomass <- p_weighted * survey.area /1e6
+@
+
+The total estimated biomass for the \Sexpr{round(survey.area, 2)} square km sample area of the survey is \Sexpr{round(survey.biomass, 2)} tonnes. Note that this is only a simple example of how the package \texttt{acoustic} can be used to automatically estimate krill density. It is not intended as a reference for biomass estimation.
+
+\end{document}
