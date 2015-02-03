@@ -4,8 +4,8 @@
 \begin{document}
 \SweaveOpts{concordance=TRUE}
 
-\title{Schools detection using the \texttt{R} package \texttt{acoustic} to control Echoview via COM}
-\author{Martin J. Cox}
+\title{Schools detection using the \texttt{R} package \texttt{EchoviewR} to control Echoview via COM}
+\author{Lisa-Marie Harrison and Martin J. Cox}
 \maketitle
 \section{Introduction}
 In this vignette we will use the example acoustic data collected during the KOAS voyage to demonstrate how to carry out schools detection using \texttt{acoustic} to control Echoview via COM.  We assume the reader has knowledge of the schools detection algorithm implemented in Echoview.  If not please visit  \url{http://support.echoview.com/WebHelp/Echoview.htm/} to see the Echoview help file and also ...  We also assume the reader is familar with Echoview concepts such as filesets, regions, files and virtual variables.

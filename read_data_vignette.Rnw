@@ -1,7 +1,7 @@
 \documentclass{article}
 
 \begin{document}
-\title{Schools detection using the \texttt{R} package \texttt{acoustic} to control Echoview via COM}
+\title{Read data using the \texttt{R} package \texttt{EchoviewR} to control Echoview via COM}
 \author{Lisa-Marie Harrison and Martin Cox}
 \SweaveOpts{concordance=TRUE}
 \maketitle
